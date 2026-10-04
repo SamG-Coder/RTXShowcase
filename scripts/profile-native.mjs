@@ -18,7 +18,7 @@ try{
  await p.route('**/app.js*',r=>r.fulfill({contentType:'application/javascript',body:app}));
  if(empty){
   const water=emptyKernels(await readFile('dist/kernels/water-native.cu','utf8'));
-  const optix=(await readFile('dist/kernels/optix.cu','utf8')).replace(/params.image\[i.y\*s.x\+i.x\]=render_pixel\([^;]+;/,'params.image[i.y*s.x+i.x]=0xff000000u;');
+  const optix=(await readFile('dist/kernels/optix.cu','utf8')).replace(/unsigned pixel=render_pixel\([^;]+;/,'unsigned pixel=0xff000000u;');
   await p.route('**/kernels/water-native.cu',r=>r.fulfill({contentType:'text/plain',body:water}));
   await p.route('**/kernels/optix.cu',r=>r.fulfill({contentType:'text/plain',body:optix}));
  }

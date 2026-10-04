@@ -111,8 +111,9 @@ inlining changes floating-point evaluation: mean absolute RGB differences were
 This is not a bit-identical rendering claim. Resolution, samples, bounces,
 geometry and water effects are unchanged.
 
-Run `node scripts/compare-native.mjs` for the alternating comparison and pixel
-checks. `node scripts/bench-sync.mjs <label> --webgpu` measures the fallback.
+The earlier comparison was recorded at commit cc090bc. The current
+`node scripts/compare-native.mjs` compares shared versus CUDA-owned simulation
+buffers, with identical compiler settings and shared texture output. `node scripts/bench-sync.mjs <label> --webgpu` measures the fallback.
 Add `--phase=water` or `--phase=render` to isolate a phase (still including host
 and presentation overhead), or `--pixels` to save the final packed image.
 Profiling hooks are diagnostic only; normal frames always run both phases.
@@ -135,3 +136,25 @@ Do not subtract these separately sampled medians as an exact GPU shading time.
 Caching imported native semaphores and eliding waits on earlier same-stream
 signals was trialled, but measured 12.2 ms native / 5.3 ms empty; the change was
 reverted because it did not establish a meaningful performance improvement.
+
+
+## Persistent native simulation and texture output
+
+On an updated ChromiumRTXCuda, all 16 water buffers are CUDA-owned and persist
+between frames. OptiX writes directly into an rgba8unorm shared surface. Its
+real `GPUTexture` is copied to the canvas entirely on the GPU. The normal frame
+now hands off **one shared texture**, compared with 17 shared resources before.
+The shared mesh is used during initialization only. Older ChromiumRTXCuda builds
+without `nativeOwnedBuffers` retain shared simulation buffers; Native Off remains
+WebGPU. No native-only browser is required for the fallback.
+
+At 960 x 600, four samples/pixel and six bounces, an alternating 75-frame-per-
+variant test across three views measured 10.6 ms median with shared simulation
+buffers and 10.1 ms with CUDA-owned buffers. All 576,000 pixels matched exactly
+in each of the three frozen views. The empty native workload still measured
+5.3 ms median, so this is not a large performance gain or proof of WebGPU parity.
+Native rendering at 1440p and 4K and switching back to WebGPU also passed.
+
+JavaScript still records one frame batch, as in the WebGPU path. Cached native
+frame graphs, multiple output textures and eliminating the per-frame completion
+wait are separate future work, not features of this change.

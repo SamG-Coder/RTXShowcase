@@ -17,10 +17,10 @@ async function setup(wantNative){
    diagnostics.stage="geometry allocation";vertices=await runtime.createSharedBuffer(73728*16);
    const geometry=await runtime.native.kernel(sources[2],{entry:'geometry',workgroupSize:[64,1,1]});
    scene=await runtime.native.createAccelerationStructure({vertexCount:73728,vertexStride:16,allowUpdate:false});
-   diagnostics.stage="OptiX pipeline";pipeline=await runtime.native.rayTracingPipeline(sources[3],{maxTraceDepth:1,numPayloadValues:2,parameters:[{name:'image',type:'buffer',element:'uint'},...['brush','sandState','surface','coefficients','light','camera'].map(name=>({name,type:'buffer',element:'float4'})),{name:'monoLight',type:'buffer',element:'float'},{name:'depth',type:'f32'},{name:'bounces',type:'i32'},{name:'samples',type:'i32'}]});
+   diagnostics.stage="OptiX pipeline";pipeline=await runtime.native.rayTracingPipeline(sources[3],{maxTraceDepth:1,numPayloadValues:2,parameters:[{name:'image',type:'surface'},...['brush','sandState','surface','coefficients','light','camera'].map(name=>({name,type:'buffer',element:'float4'})),{name:'monoLight',type:'buffer',element:'float'},{name:'depth',type:'f32'},{name:'bounces',type:'i32'},{name:'samples',type:'i32'}]});
    diagnostics.stage="geometry build";await runtime.native.batch().dispatch(geometry.bind({vertices}),[1152,1,1]).buildAccelerationStructure(scene,vertices).submit();
   }else kernel=await runtime.kernel(sources[0]);
-  diagnostics.stage="water kernels";water=await createWater(runtime,native,$('loadText'));width=height=0;image=null;ready=true;dirty=true;diagnostics.backend=native?'OptiX RTX':'WebCuda / WebGPU';diagnostics.native=native;
+  diagnostics.stage="water kernels";water=await createWater(runtime,native,$('loadText'));width=height=0;image=null;ready=true;dirty=true;diagnostics.backend=native?'OptiX RTX':'WebCuda / WebGPU';diagnostics.native=native;diagnostics.nativeOwnedBuffers=!!runtime.native?.capabilities.nativeOwnedBuffers;
   $('backend').textContent=diagnostics.backend;$('native').textContent=native?'On':'Off';$('native').setAttribute('aria-checked',String(native));$('capability').textContent=native?'Hardware ray tracing · all shading in CUDA':'Software ray tracing · CUDA compiled to WebGPU';
  }catch(e){ready=false;error(e);if(wantNative){busy=false;return setup(false);}}
  finally{busy=false;$('loading').hidden=true;$('native').disabled=!navigator.cuda?.getInteropCapabilities;}
@@ -28,7 +28,7 @@ async function setup(wantNative){
 async function resize(){
  const aspect=innerWidth/innerHeight,w=Math.max(64,Math.floor(Math.min(+$('quality').value,innerWidth*devicePixelRatio)/64)*64),h=Math.max(8,Math.round(w/aspect/8)*8);
  if(w===width&&h===height)return;
- await runtime.idle();if(image)runtime.destroyBuffer(image);image=native?await runtime.createSharedBuffer(w*h*4):runtime.createBuffer(w*h*4);width=w;height=h;canvas.width=w;canvas.height=h;
+ await runtime.idle();if(image){if(image.gpuTexture)runtime.destroyTexture(image);else runtime.destroyBuffer(image);}image=native?await runtime.createSharedTexture({width:w,height:h,format:'rgba8unorm'}):runtime.createBuffer(w*h*4);width=w;height=h;canvas.width=w;canvas.height=h;
  context.configure({device:runtime.device,format:'rgba8unorm',usage:GPUTextureUsage.COPY_DST|GPUTextureUsage.RENDER_ATTACHMENT,alphaMode:'opaque'});diagnostics.width=w;diagnostics.height=h;
 }
 async function draw(){
@@ -37,7 +37,7 @@ async function draw(){
  if(diagnostics.profilePhase!=='water'){if(native)batch.trace(pipeline.bind(scene,resources,renderScalars),[width,height]);
  else batch.dispatch(kernel.bind(resources,{width,height,...renderScalars}),[width/8,height/8,1]);}
  const submission=await batch.submit();diagnostics.nativeSubmissionsPerFrame=native?1:0;if(native)diagnostics.nativeHandoff=submission;
- const e=runtime.device.createCommandEncoder();e.copyBufferToTexture({buffer:image.gpuBuffer,bytesPerRow:width*4},{texture:context.getCurrentTexture()},[width,height]);runtime.device.queue.submit([e.finish()]);
+ const e=runtime.device.createCommandEncoder();if(native)e.copyTextureToTexture({texture:image.gpuTexture},{texture:context.getCurrentTexture()},[width,height]);else e.copyBufferToTexture({buffer:image.gpuBuffer,bytesPerRow:width*4},{texture:context.getCurrentTexture()},[width,height]);runtime.device.queue.submit([e.finish()]);
  // The canvas copy waits on the CUDA completion fence for image. Waiting for
  // this queue therefore covers the whole native batch without a second IPC
  // request and a context-wide CUDA synchronization. Water-only profiling has
@@ -58,6 +58,6 @@ $('fullscreen').onclick=()=>document.fullscreenElement?document.exitFullscreen()
 for(const id of ['quality','bounces','waves','sun','samples','depth','wind'])$(id).oninput=()=>{dirty=true;$('bounceValue').textContent=$('bounces').value;};
 let pointer=null,x=0,y=0;canvas.onpointerdown=e=>{pointer=e.pointerId;x=e.clientX;y=e.clientY;canvas.setPointerCapture(pointer);};canvas.onpointermove=e=>{if(e.pointerId!==pointer)return;yaw-=(e.clientX-x)*.006;pitch=Math.max(.06,Math.min(1.35,pitch+(e.clientY-y)*.006));x=e.clientX;y=e.clientY;dirty=true;};canvas.onpointerup=canvas.onpointercancel=()=>pointer=null;
 canvas.onwheel=e=>{e.preventDefault();distance=Math.max(4.5,Math.min(35,distance*Math.exp(e.deltaY*.001)));dirty=true;};addEventListener('resize',()=>dirty=true);
-window.showcase={profile(phase){if(![null,"water","render"].includes(phase))throw Error("Unknown profiling phase");diagnostics.profilePhase=phase;},tour(value){tour=value;tourStart=performance.now();paused=false;},async native(value){if(value&&await navigator.cuda.queryPermission()!=='granted')throw Error('Grant native GPU permission first');await setup(value);},async pose(value){while(inFrame)await new Promise(r=>setTimeout(r,5));Object.assign(diagnostics,{capturePose:value});yaw=value.yaw??yaw;pitch=value.pitch??pitch;distance=value.distance??distance;time=value.time??time;paused=true;dirty=true;},pause(){paused=true;},cinematic(value){document.body.classList.toggle('cinematic',value);},async pixels(){while(inFrame)await new Promise(r=>setTimeout(r,5));return Array.from(await runtime.read(image,Uint32Array));}};
+window.showcase={profile(phase){if(![null,"water","render"].includes(phase))throw Error("Unknown profiling phase");diagnostics.profilePhase=phase;},tour(value){tour=value;tourStart=performance.now();paused=false;},async native(value){if(value&&await navigator.cuda.queryPermission()!=='granted')throw Error('Grant native GPU permission first');await setup(value);},async pose(value){while(inFrame)await new Promise(r=>setTimeout(r,5));Object.assign(diagnostics,{capturePose:value});yaw=value.yaw??yaw;pitch=value.pitch??pitch;distance=value.distance??distance;time=value.time??time;paused=true;dirty=true;},pause(){paused=true;},cinematic(value){document.body.classList.toggle('cinematic',value);},async pixels(){while(inFrame)await new Promise(r=>setTimeout(r,5));if(!native)return Array.from(await runtime.read(image,Uint32Array));const copy=runtime.createBuffer(width*height*4);try{const e=runtime.device.createCommandEncoder();e.copyTextureToBuffer({texture:image.gpuTexture},{buffer:copy.gpuBuffer,bytesPerRow:width*4},[width,height]);runtime.device.queue.submit([e.finish()]);return Array.from(await runtime.read(copy,Uint32Array));}finally{runtime.destroyBuffer(copy);}}};
 if(!navigator.cuda?.getInteropCapabilities){$('native').disabled=true;$('capability').textContent='Open in ChromiumRTXCuda to enable native RTX.';}
 await setup(false);requestAnimationFrame(frame);

@@ -4,7 +4,7 @@ export async function createWater(runtime,native,loading){
  const source=native?await fetch('./kernels/water-native.cu').then(r=>r.text()):null;
  for(const name of names){loading.textContent='Preparing ClearWater FFT · '+name;const artifact=await fetch('./kernels/'+name+'.json').then(r=>r.json());kernels[name]=native?await runtime.native.kernel(source,{entry:name,workgroupSize:artifact.metadata.workgroupSize}):await runtime.kernel(artifact);}
  const sizes={motion:114688*4,twiddles:64*8,seed:49152*16,fft0:49152*8,fft1:49152*8,surface:49152*16,coefficientTemp:49152*16,coefficients:49152*16,sandState:16384*16,seaMemory:32768*4,brush:48,disturbance:16384*16,light:512*512*16,monoLight:4,photons:512*512*16,camera:131104*16};
- for(const [name,size] of Object.entries(sizes))buffers[name]=native?await runtime.createSharedBuffer(new Uint8Array(size)):runtime.createBuffer(new Uint8Array(size));
+ for(const [name,size] of Object.entries(sizes))buffers[name]=native?(runtime.native.capabilities.nativeOwnedBuffers?await runtime.native.createDeviceBuffer(size):await runtime.createSharedBuffer(new Uint8Array(size))):runtime.createBuffer(new Uint8Array(size));
  let previousDepth=-1,previousWind=-1,previousSky=-Infinity,lastTime=0;
  function dispatch(b,name,resources,scalars,grid){return b.dispatch(kernels[name].bind(resources,scalars),grid);}
  const B=buffers;
