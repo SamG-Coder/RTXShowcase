@@ -1,0 +1,1 @@
+__global__ void render(unsigned *image,int width,int height,float yaw,float pitch,float distance,float time,float strength,float sunAngle,int bounces,int samples){int x=blockIdx.x*blockDim.x+threadIdx.x,y=blockIdx.y*blockDim.y+threadIdx.y;if(x>=width||y>=height)return;image[y*width+x]=render_pixel(x,y,width,height,yaw,pitch,distance,time,strength,sunAngle,bounces,samples);}
