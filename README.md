@@ -141,8 +141,8 @@ reverted because it did not establish a meaningful performance improvement.
 ## Persistent native simulation and texture output
 
 On an updated ChromiumRTXCuda, all 16 water buffers are CUDA-owned and persist
-between frames. OptiX writes directly into an rgba8unorm shared surface. Its
-real `GPUTexture` is copied to the canvas entirely on the GPU. The normal frame
+between frames. OptiX writes directly into an rgba8unorm shared surface. On the older texture-presentation path, its
+real `GPUTexture` is copied to the canvas entirely on the GPU. That frame
 now hands off **one shared texture**, compared with 17 shared resources before.
 The shared mesh is used during initialization only. Older ChromiumRTXCuda builds
 without `nativeOwnedBuffers` retain shared simulation buffers; Native Off remains
@@ -156,5 +156,42 @@ in each of the three frozen views. The empty native workload still measured
 Native rendering at 1440p and 4K and switching back to WebGPU also passed.
 
 JavaScript still records one frame batch, as in the WebGPU path. Cached native
-frame graphs, multiple output textures and eliminating the per-frame completion
-wait are separate future work, not features of this change.
+frame graphs remain separate work.
+
+## Direct native canvas presentation
+
+Updated ChromiumRTXCuda builds expose native canvas surfaces. The showcase
+selects this path automatically when available: CUDA/OptiX writes the final
+image into one of three native surfaces, and Chromium displays that same
+allocation through its compositor. There is no WebGPU canvas copy and no
+per-frame `queue.onSubmittedWorkDone()` in this path. The FFT, ray counts,
+reflection bounces and shading are unchanged.
+
+A surface is reused only after CUDA completes and the compositor releases it.
+Completion notifications are asynchronous. If all three are
+busy, rendering retries on the next animation frame. Resize retires the old
+pool and creates surfaces at the new dimensions. Older native browsers retain
+the shared-texture copy path, and Native Off continues to use WebGPU.
+
+The native HUD labels its timing **ms submit** because it measures recording,
+interop and presentation enqueue, not GPU completion or monitor presentation.
+`frameIntervalMs` and `backpressureFrames` are available in diagnostics. Do not
+compare enqueue time to the older completed-frame measurements above as a GPU
+speedup. `?texturePresentation` forces the old native output path for comparison.
+
+`node scripts/compare-native.mjs --canvas` compares frozen output pixels between
+the texture and native-canvas paths. `node scripts/profile-native.mjs --texture`
+profiles completed frames through the older copy path; without `--texture`,
+native-canvas profiling records enqueue time and explicitly labels that scope.
+Screenshots and video capture can still request their own read/copy operations;
+those are separate from normal rendering.
+
+
+Validation on 2026-10-05: native output matched all 576,000 pixels exactly in
+three frozen 960 x 600 views. Direct native rendering passed at 1440p and 4K,
+including switching back to WebGPU. A GPU-drained throughput comparison
+(`node scripts/benchmark-presentation.mjs`, three runs of 200 frames per path,
+960 x 600, four samples/pixel, six bounces) measured median 53.3 frames/s with
+the texture copy and 57.7 frames/s with direct native presentation, about 8%
+higher. This is headless submitted-frame throughput, not GPU timestamp timing
+or monitor scan-out FPS. No compiler build was running during measurement.
