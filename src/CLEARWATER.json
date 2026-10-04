@@ -2,5 +2,6 @@
   "project": "https://github.com/SamG-Coder/ClearWater6.1",
   "file": "src/water.cu",
   "sha256": "eae493031f1b16ec98437f0e869cb518ce33eb8fc50690fc533b061093422a88",
-  "integration": "Full source retained; showcase reuses FFT, caustics, sand and weather kernels. Ray optical adapter in water-optics.cu."
+  "integration": "Full source retained; showcase reuses FFT, caustics, sand and weather kernels. Ray optical adapter in water-optics.cu.",
+  "hashEncoding": "Exact file bytes"
 }
