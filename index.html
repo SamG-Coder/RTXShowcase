@@ -1,11 +1,13 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>RTX Showcase · Ocean reflections</title><link rel="icon" href="data:,"><link rel="stylesheet" href="style.css"></head><body>
 <canvas id="scene" aria-label="Ocean with reflective metal spheres"></canvas>
 <header><a href="./" class="brand">RTX SHOWCASE<span>01 / OCEAN REFLECTIONS</span></a><button id="hide">Hide controls</button></header>
-<section id="controls"><p class="eyebrow">CUDA / OPTIX / WEBGPU</p><h1>Reflections.<br>All the way down.</h1><p class="intro">An open ocean. Six polished metals.<br>One ray, multiple reflections.</p>
+<section id="controls"><p class="eyebrow">CUDA / OPTIX / WEBGPU</p><h1>Reflections.<br>All the way down.</h1><p class="intro">ClearWater6.1 FFT ocean. Six polished metals.<br>One ray, multiple reflections.</p>
 <div class="native-row"><div><strong>Native RTX</strong><small id="backend">WebCuda / WebGPU</small></div><button id="native" role="switch" aria-checked="false">Off</button></div>
 <p id="capability" class="note">Checking browser capabilities…</p>
 <label>Resolution<select id="quality"><option value="640">Performance · 640p wide</option><option value="960" selected>Balanced · 960p wide</option><option value="1440">High · 1440p wide</option><option value="2560">1440p video · 2560 wide</option><option value="3840">4K · 3840 wide</option></select></label>
 <label>Reflection bounces <output id="bounceValue">6</output><input id="bounces" type="range" min="1" max="10" step="1" value="6"></label>
+<label>Water depth <input id="depth" type="range" min="0.5" max="30" step=".1" value="1.4"></label>
+<label>Wind <input id="wind" type="range" min="2" max="12" step=".1" value="5"></label>
 <label>Ocean swell <input id="waves" type="range" min="0" max="2" step=".01" value="1"></label>
 <label>Sun elevation <input id="sun" type="range" min=".1" max="1.3" step=".01" value=".55"></label>
 <label>Sampling<select id="samples"><option value="1">1 ray / pixel</option><option value="4" selected>4 rays / pixel</option></select></label>

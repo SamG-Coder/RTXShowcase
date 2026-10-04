@@ -1,0 +1,12 @@
+import {chromium} from 'playwright';import {mkdir,appendFile,writeFile} from 'node:fs/promises';
+await mkdir('captures/video',{recursive:true});const output='captures/video/ocean-rtx-1440p.webm';await writeFile(output,'');
+const b=await chromium.launch({executablePath:'D:/ChromiumRTXCuda/src/out/RTXCuda/chrome.exe',headless:true,chromiumSandbox:true});
+try{const ctx=await b.newContext({viewport:{width:2560,height:1440}}),p=await ctx.newPage();await p.goto('http://127.0.0.1:5198/');await p.waitForFunction(()=>showcaseDiagnostics.ready,null,{timeout:120000});
+const c=await ctx.newCDPSession(p),{targetInfo}=await c.send('Target.getTargetInfo');await c.send('Browser.setPermission',{permission:{name:'native-gpu'},setting:'granted',origin:'http://127.0.0.1:5198',browserContextId:targetInfo.browserContextId});
+await p.evaluate(()=>showcase.native(true));await p.selectOption('#quality','2560');await p.selectOption('#samples','1');await p.waitForFunction(()=>showcaseDiagnostics.native&&showcaseDiagnostics.width===2560&&showcaseDiagnostics.frames>15,null,{timeout:120000});
+await p.evaluate(()=>{showcase.cinematic(true);showcase.tour(true);});await p.screenshot({path:'captures/video/cover.png'});
+let writes=Promise.resolve();await p.exposeFunction('saveVideoChunk',data=>{writes=writes.then(()=>appendFile(output,Buffer.from(data,'base64')));return writes;});
+console.log('RECORDING',JSON.stringify(await p.evaluate(()=>showcaseDiagnostics)));
+await p.evaluate(async()=>{const stream=document.getElementById('scene').captureStream(30),mime=['video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm'].find(t=>MediaRecorder.isTypeSupported(t));const recorder=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:20000000});const pending=[];recorder.ondataavailable=e=>{if(e.data.size)pending.push(e.data.arrayBuffer().then(data=>{const bytes=new Uint8Array(data);let binary='';for(let i=0;i<bytes.length;i+=32768)binary+=String.fromCharCode(...bytes.subarray(i,i+32768));return window.saveVideoChunk(btoa(binary));}));};const done=new Promise(resolve=>recorder.onstop=resolve);recorder.start(1000);await new Promise(r=>setTimeout(r,60000));recorder.stop();await done;await Promise.all(pending);stream.getTracks().forEach(t=>t.stop());});
+await writes;await writeFile('captures/video/recording.json',JSON.stringify(await p.evaluate(()=>showcaseDiagnostics),null,2));console.log('SAVED',output);
+}finally{await b.close();}

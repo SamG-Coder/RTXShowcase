@@ -1,6 +1,6 @@
 # RTX Showcase
 
-An original ocean and polished-metal reflection showcase, authored in CUDA.
+A polished-metal reflection showcase using the full ClearWater6.1 spectral water pipeline, authored in CUDA.
 
 [Live demo](https://samg-coder.github.io/RTXShowcase/)
 
@@ -16,16 +16,23 @@ one through ten reflection bounces.
   Sphere intersections use a GPU-generated mesh of 24,576 triangles, with smooth
   normals. A browser permission prompt is required. Unsupported devices and
   denied permission retain the WebGPU path.
-- Ocean intersection, shading, camera, lighting and bounce integration share
-  `src/common.cu`. The ocean uses seven directional wave bands, not an FFT.
+- Both paths run the ClearWater6.1 two-band 128 × 128 FFT, smooth cubic surface
+  reconstruction, wave-driven shallow sand, RGB refracted sunlight caustics,
+  detailed seabed, depth absorption and cached planetary weather lighting.
+- Native uses CUDA for all water simulation and OptiX for sphere intersections.
+  Off uses the same water equations compiled to WebGPU.
+- Reflection rays use the same detailed water optics as the directly visible ocean.
 - Both paths have real secondary reflections. Off does not disable reflections;
   the switch changes the execution backend. Native sphere tessellation introduces
   small geometric differences, so this is not a bit-identical comparison.
 - Pixels remain on the GPU for presentation. Explicit inspection/recording tools
   can read frames for validation and video export.
 
-No ClearWater scene or shader code was copied. The project vendors the explicitly
-requested WebCuda library and uses ChromiumRTXCuda's OptiX interface.
+The water source is intentionally imported from ClearWater6.1 at the user's
+request. `src/clearwater-water.cu` retains the full upstream source, with its
+SHA-256 recorded in `src/CLEARWATER.json`. `src/water-optics.cu` adapts the PC
+water optical path for iterative reflections. Ship, combat, terrain generation
+and game menus are not part of this reflection showcase. WebCuda is vendored.
 
 ## Run
 
@@ -47,13 +54,17 @@ Native currently requires Windows and a compatible NVIDIA RTX GPU/driver.
 
 ## Validation
 
-Local smoke tests rendered both backends without reported GPU errors at 960 × 600,
-six bounces and four samples/pixel. Individual observed frame times were about
-90 ms (WebGPU) and 10 ms (OptiX) on the test machine. These are single observations,
-not controlled benchmark results or mobile performance claims.
+Local browser smoke tests render the full FFT water on both WebGPU and native
+CUDA / OptiX at 960 × 600, six bounces and four samples/pixel, without reported
+GPU errors. `scripts/verify.mjs --native` also checks 1440p, 4K, depth changes
+and switching back to WebGPU. These are functional tests, not controlled
+benchmarks or physical-phone performance measurements.
+
+OptiX helper functions are compiled without inlining to keep compilation within
+the browser host request timeout. No water effects are removed for Native On.
 
 ## Licensing
 
-Original showcase code is MIT licensed. WebCuda is MIT licensed; its native
+Showcase code and ClearWater6.1 are MIT licensed. WebCuda is MIT licensed; its native
 transport includes BSD-3-Clause ChromiumRTXCuda code. Retained licenses are under
 `vendor/`. No NVIDIA SDK headers or driver binaries are redistributed here.
