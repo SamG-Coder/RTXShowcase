@@ -12,19 +12,19 @@ one through ten reflection bounces.
 
 - **Off:** WebCuda compiles CUDA shading to WGSL and executes it through WebGPU.
   Sphere intersections are analytic.
-- **On:** ChromiumRTXCuda runs custom CUDA OptiX ray programs on RTX hardware.
-  Sphere intersections use a GPU-generated mesh of 24,576 triangles, with smooth
-  normals. A browser permission prompt is required. Unsupported devices and
-  denied permission retain the WebGPU path.
+- **On:** ChromiumRTXCuda runs CUDA compute with the same analytic sphere
+  intersections and shared rendering source as WebGPU. It uses optimized fast
+  math and compiler-selected inlining. A browser permission prompt is required.
+  Unsupported devices and denied permission retain the WebGPU path.
 - Both paths run the ClearWater6.1 two-band 128 × 128 FFT, smooth cubic surface
   reconstruction, wave-driven shallow sand, RGB refracted sunlight caustics,
   detailed seabed, depth absorption and cached planetary weather lighting.
-- Native uses CUDA for all water simulation and OptiX for sphere intersections.
+- Native uses CUDA for all water simulation and analytic sphere reflections.
   Off uses the same water equations compiled to WebGPU.
 - Reflection rays use the same detailed water optics as the directly visible ocean.
 - Both paths have real secondary reflections. Off does not disable reflections;
-  the switch changes the execution backend. Native sphere tessellation introduces
-  small geometric differences, so this is not a bit-identical comparison.
+  the switch changes the execution backend. CUDA fast math and compiler differences
+  mean the output is not guaranteed to be bit-identical.
 - Pixels remain on the GPU for presentation. Explicit inspection/recording tools
   can read frames for validation and video export.
 
@@ -43,7 +43,7 @@ npm start
 ```
 
 Open http://127.0.0.1:5198 in a WebGPU browser. Enable Native in ChromiumRTXCuda.
-Native currently requires Windows and a compatible NVIDIA RTX GPU/driver.
+Native currently requires Windows and a compatible NVIDIA CUDA GPU/driver.
 
 ## Related projects
 
@@ -54,21 +54,23 @@ Native currently requires Windows and a compatible NVIDIA RTX GPU/driver.
 
 ## Validation
 
-Local browser smoke tests render the full FFT water on both WebGPU and native
-CUDA / OptiX at 960 × 600, six bounces and four samples/pixel, without reported
-GPU errors. `scripts/verify.mjs --native` also checks 1440p, 4K, depth changes
-and switching back to WebGPU. These are functional tests, not controlled
-benchmarks or physical-phone performance measurements.
-
-OptiX retains separate calls for five large shading stages to keep compilation
-manageable. Small math and sampling helpers can be inlined and optimized normally.
-No water effects are removed for Native On.
+The current native renderer shares intersection, optics and reflection helpers
+with WebGPU. `node scripts/test-renderer-contract.mjs` checks the generated
+source contract. `npm run benchmark:frame` measures isolated full-resolution
+frames; see [the benchmark report](SINGLE_FRAME_BENCHMARK.md) for settings,
+results and limitations. The optimized native configuration measured 11.58 ms
+render-only at 3840 x 2160, four samples and six bounces on an RTX 5080. This is
+not sustained gameplay FPS or a visual-parity claim after fast math.
 
 ## Licensing
 
 Showcase code and ClearWater6.1 are MIT licensed. WebCuda is MIT licensed; its native
 transport includes BSD-3-Clause ChromiumRTXCuda code. Retained licenses are under
 `vendor/`. No NVIDIA SDK headers or driver binaries are redistributed here.
+
+> The following sections record earlier OptiX and presentation experiments.
+> Their renderer descriptions and measurements are historical; the current
+> default is the analytic CUDA renderer described above.
 
 ## Native submission batching
 

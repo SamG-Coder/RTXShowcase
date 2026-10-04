@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+const source=await readFile('dist/kernels/native-render.cu','utf8');
+const plain=source.replaceAll('__noinline__ ','');
+for(const file of ['common.cu','water-optics.cu'])assert.ok(plain.includes((await readFile('src/'+file,'utf8')).trim()),'Native shader must contain the unchanged '+file);
+const render=await readFile('src/render.cu','utf8');
+assert.ok(plain.includes(render.split('__global__ void showcase_render')[0].trim()),'Native and WebGPU must share render_pixel and trace_color');
+assert.ok(!source.includes('optixTrace('),'Default native rendering must use the same analytic query as WebGPU');
+assert.match(source,/surf2Dwrite\(pixel,image,x\*4,y\)/);
+const contract=JSON.parse(await readFile('dist/kernels/renderer-contract.json','utf8'));
+assert.equal(contract.algorithm,'analytic-spheres');assert.deepEqual(contract.workgroupSize,[8,8,1]);
+console.log('Matched renderer contract passed: shared intersections, optics and reflection loop; only final output storage differs.');

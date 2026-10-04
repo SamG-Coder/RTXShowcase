@@ -18,9 +18,9 @@ try{
  await p.route('**/app.js*',r=>r.fulfill({contentType:'application/javascript',body:app}));
  if(empty){
   const water=emptyKernels(await readFile('dist/kernels/water-native.cu','utf8'));
-  const optix=(await readFile('dist/kernels/optix.cu','utf8')).replace(/unsigned pixel=render_pixel\([^;]+;/,'unsigned pixel=0xff000000u;');
+  const render=(await readFile('dist/kernels/native-render.cu','utf8')).replace(/unsigned pixel=render_pixel\([^;]+;/,'unsigned pixel=0xff000000u;');
   await p.route('**/kernels/water-native.cu',r=>r.fulfill({contentType:'text/plain',body:water}));
-  await p.route('**/kernels/optix.cu',r=>r.fulfill({contentType:'text/plain',body:optix}));
+  await p.route('**/kernels/native-render.cu',r=>r.fulfill({contentType:'text/plain',body:render}));
  }
  await p.goto('http://127.0.0.1:5198/'+(texture?'?texturePresentation':''));await p.waitForFunction(()=>showcaseDiagnostics.ready,null,{timeout:120000});
  if(!webgpu){const c=await ctx.newCDPSession(p),{targetInfo}=await c.send('Target.getTargetInfo');await c.send('Browser.setPermission',{permission:{name:'native-gpu'},setting:'granted',origin:'http://127.0.0.1:5198',browserContextId:targetInfo.browserContextId});await p.evaluate(()=>showcase.native(true));}

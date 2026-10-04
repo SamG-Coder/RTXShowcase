@@ -14,14 +14,17 @@ for(const name of [...entries,'showcase_render','geometry']){
 const declarations='__device__ float terrain_height(const float4 *camera,float3 n);\n__device__ float terrain_ray_altitude(float altitude,float3 ray,float t);\n__device__ float3 weather_sky_sample(float3 d,const float4 *camera);\n';
 function removeKernels(source){return source.replace(/__global__ void \w+\([^)]*\)\s*\{/g,(m,offset)=>m).split(/(?=__global__ void )/).map((part,index)=>{if(index===0)return part;const start=part.indexOf('{');let level=1,i=start+1;for(;i<part.length&&level;i++){if(part[i]==='{')level++;if(part[i]==='}')level--;}return part.slice(i);}).join('');}
 const optix=declarations+removeKernels(water)+'\n'+common.replace(/\/\/ QUERY_BEGIN[\s\S]*?\/\/ QUERY_END/,await read('optix-query.cu'))+'\n'+optics+'\n'+removeKernels(render)+'\n'+await read('optix.cu');
-// Keep large shading stages separate without forcing tiny math and sampling helpers
-// through OptiX callable stacks. A few coarse boundaries also bound compile time.
-const nativeOptix=optix.replace(/__device__ (\w+\s+(\w+)\([^)]*\)\s*\{)/g,(declaration,signature,name)=>
- ['planet_radiance','water_optics','terrain_radiance','cloud_volume','trace_color'].includes(name)
- ?'__device__ __noinline__ '+signature:declaration);
+// Let the CUDA compiler choose function inlining.
+const nativeOptix=optix;
+// The default native renderer shares the exact helper bodies used by WebGPU.
+// Only the final store targets a native surface instead of a WebGPU buffer.
+const sharedRender=removeKernels(water)+'\n'+common+'\n'+optics+'\n'+removeKernels(render);
+const nativeRender=declarations+sharedRender+'\n'+await read('native-render.cu');
+await writeFile('dist/kernels/native-render.cu',nativeRender);
+await writeFile('dist/kernels/renderer-contract.json',JSON.stringify({version:1,algorithm:'analytic-spheres',sharedSourceSha256:createHash('sha256').update(sharedRender).digest('hex'),nativeEntry:'showcase_render',webgpuEntry:'showcase_render',workgroupSize:[8,8,1],outputOnlyDifference:'native surface store versus WebGPU storage-buffer store'}));
 await writeFile('dist/kernels/optix.cu',nativeOptix); await writeFile('dist/kernels/water-native.cu',declarations+simulation);await writeFile('dist/kernels/geometry.cu',geometry);
 await writeFile('dist/kernels/water-entries.json',JSON.stringify(entries));
 for(const file of ['index.html','style.css','app.js','water.js','vendor'])await cp(file,'dist/'+file,{recursive:true});
-const version=createHash('sha256').update(shading).update(nativeOptix).update(await readFile('app.js')).update(await readFile('water.js')).digest('hex').slice(0,12);
+const version=createHash('sha256').update(shading).update(nativeRender).update(await readFile('app.js')).update(await readFile('water.js')).digest('hex').slice(0,12);
 await writeFile('dist/index.html',(await readFile('index.html','utf8')).replace('src="app.js"',`src="app.js?v=${version}"`));
-await writeFile('dist/.nojekyll','');console.log('Built full ClearWater FFT and OptiX showcase '+version);
+await writeFile('dist/.nojekyll','');console.log('Built full ClearWater FFT and matched CUDA/WebGPU showcase '+version);
