@@ -116,3 +116,22 @@ checks. `node scripts/bench-sync.mjs <label> --webgpu` measures the fallback.
 Add `--phase=water` or `--phase=render` to isolate a phase (still including host
 and presentation overhead), or `--pixels` to save the final packed image.
 Profiling hooks are diagnostic only; normal frames always run both phases.
+
+
+### Submission and completion diagnostic
+
+`node scripts/profile-native.mjs` records CPU command construction, the time
+until submission resolves, and the remaining wait for the presentation copy.
+Use `--webgpu` for the same scene on WebGPU. Use `--empty` to replace native
+water kernels with no-ops and RTX shading with a constant image, only through
+Playwright request interception. It retains the dispatch grids, shared resource
+bindings and presentation path. It never modifies the deployed shader files.
+
+A 60-frame local sample after 10 warm-up frames at 960 x 600 measured 12.3 ms
+median for native, 9.0 ms for WebGPU and 5.5 ms for the empty native workload.
+The empty result includes no-op launches, output writes, interop, queue scheduling
+and presentation completion: it is not a pure IPC or GPU timestamp measurement.
+Do not subtract these separately sampled medians as an exact GPU shading time.
+Caching imported native semaphores and eliding waits on earlier same-stream
+signals was trialled, but measured 12.2 ms native / 5.3 ms empty; the change was
+reverted because it did not establish a meaningful performance improvement.
