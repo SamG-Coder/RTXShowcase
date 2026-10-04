@@ -33,9 +33,10 @@ async function resize(){
 }
 async function draw(){
  await resize();const scalars={yaw,pitch,distance,time,strength:+$('waves').value,sunAngle:+$('sun').value,bounces:+$('bounces').value,samples:+$('samples').value,depth:+$('depth').value,wind:+$('wind').value};
- const start=performance.now();diagnostics.stage="water simulation";await water.update(scalars);diagnostics.stage="render";const resources={image,...water.resources()},renderScalars={depth:scalars.depth,bounces:scalars.bounces,samples:scalars.samples};
- if(native)await runtime.native.batch().trace(pipeline.bind(scene,resources,renderScalars),[width,height]).submit();
- else runtime.batch().dispatch(kernel.bind(resources,{width,height,...renderScalars}),[width/8,height/8,1]).submit();
+ const start=performance.now();diagnostics.stage="water simulation";const batch=native?runtime.native.batch():runtime.batch();water.record(batch,scalars);diagnostics.stage="render";const resources={image,...water.resources()},renderScalars={depth:scalars.depth,bounces:scalars.bounces,samples:scalars.samples};
+ if(native)batch.trace(pipeline.bind(scene,resources,renderScalars),[width,height]);
+ else batch.dispatch(kernel.bind(resources,{width,height,...renderScalars}),[width/8,height/8,1]);
+ const submission=await batch.submit();diagnostics.nativeSubmissionsPerFrame=native?1:0;if(native)diagnostics.nativeHandoff=submission;
  const e=runtime.device.createCommandEncoder();e.copyBufferToTexture({buffer:image.gpuBuffer,bytesPerRow:width*4},{texture:context.getCurrentTexture()},[width,height]);runtime.device.queue.submit([e.finish()]);await runtime.idle();
  diagnostics.frameMs=performance.now()-start;diagnostics.frames++;diagnostics.ready=true;diagnostics.bounces=scalars.bounces;diagnostics.water="ClearWater6.1 FFT / PC optics";diagnostics.depth=scalars.depth;
  if(diagnostics.frames%10===0)$('stats').textContent=`${diagnostics.backend} · ${width} × ${height} · ${diagnostics.frameMs.toFixed(1)} ms · ${scalars.bounces} bounces`;

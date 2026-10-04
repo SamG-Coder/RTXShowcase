@@ -68,3 +68,20 @@ the browser host request timeout. No water effects are removed for Native On.
 Showcase code and ClearWater6.1 are MIT licensed. WebCuda is MIT licensed; its native
 transport includes BSD-3-Clause ChromiumRTXCuda code. Retained licenses are under
 `vendor/`. No NVIDIA SDK headers or driver binaries are redistributed here.
+
+## Native submission batching
+
+Water simulation and OptiX rendering share one native batch per frame. The CUDA
+stream preserves dependencies between all passes; there is no intermediate
+return to WebGPU between simulation and ray tracing. Chrome retains the final
+fenced handoff for presentation. New ChromiumRTXCuda builds also consolidate
+aliases of the same shared fence. Diagnostic counters expose native submissions,
+shared resource count and actual exported wait-fence count.
+
+A local 50-frame timing sample after 10 warm-up frames at 960 × 600, four
+samples/pixel and six bounces changed from 17.5 ms median / 26.6 ms p95 to
+14.6 ms median / 16.1 ms p95 after batching and Chrome fence consolidation.
+This is wall-clock frame work (including submission and GPU completion), not
+isolated GPU timestamps, and one before/after run does not establish a general
+hardware speedup. `node scripts/bench-sync.mjs <label>` reproduces the fixed-camera
+measurement with the locally built ChromiumRTXCuda browser.

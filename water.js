@@ -6,11 +6,10 @@ export async function createWater(runtime,native,loading){
  const sizes={motion:114688*4,twiddles:64*8,seed:49152*16,fft0:49152*8,fft1:49152*8,surface:49152*16,coefficientTemp:49152*16,coefficients:49152*16,sandState:16384*16,seaMemory:32768*4,brush:48,disturbance:16384*16,light:512*512*16,monoLight:4,photons:512*512*16,camera:131104*16};
  for(const [name,size] of Object.entries(sizes))buffers[name]=native?await runtime.createSharedBuffer(new Uint8Array(size)):runtime.createBuffer(new Uint8Array(size));
  let previousDepth=-1,previousWind=-1,previousSky=-Infinity,lastTime=0;
- function batch(){return native?runtime.native.batch():runtime.batch();}
  function dispatch(b,name,resources,scalars,grid){return b.dispatch(kernels[name].bind(resources,scalars),grid);}
  const B=buffers;
- return {buffers:B,async update({yaw,pitch,distance,depth,sunAngle,time,strength,wind}){
-  const b=batch(),dt=Math.max(0,Math.min(.05,time-lastTime));lastTime=time;
+ return {buffers:B,record(b,{yaw,pitch,distance,depth,sunAngle,time,strength,wind}){
+  const dt=Math.max(0,Math.min(.05,time-lastTime));lastTime=time;
   dispatch(b,'showcase_camera',{camera:B.camera},{yaw,pitch,distance,depth,sunAngle},[1,1,1]);
   if(previousWind<0)dispatch(b,'weather_map',{camera:B.camera},{clock:40000,season:172,mapSize:256},[32,16,1]);
   dispatch(b,'weather_update',{camera:B.camera},{clock:40000,season:172,time,dt,baseWind:wind,enabled:1,mapSize:256,skyWidth:512,refresh:0},[1,1,1]);
@@ -28,6 +27,5 @@ export async function createWater(runtime,native,loading){
   dispatch(b,'caustic_clear',{photons:B.photons},{dispersion:1,lightSize:512},[64,64,1]);
   dispatch(b,'caustic_map',{surface:B.coefficients,camera:B.camera,photons:B.photons},{depth,rays:1024,dispersion:1,lightSize:512},[128,128,1]);
   dispatch(b,'caustic_resolve',{photons:B.photons,light:B.light,monoLight:B.monoLight},{normalization:16384,dispersion:1,lightSize:512},[64,64,1]);
-  await b.submit();
  },resources(){return Object.fromEntries(['brush','sandState','surface','coefficients','light','monoLight','camera'].map(n=>[n,B[n]]));}};
 }
