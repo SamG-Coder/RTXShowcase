@@ -60,8 +60,9 @@ GPU errors. `scripts/verify.mjs --native` also checks 1440p, 4K, depth changes
 and switching back to WebGPU. These are functional tests, not controlled
 benchmarks or physical-phone performance measurements.
 
-OptiX helper functions are compiled without inlining to keep compilation within
-the browser host request timeout. No water effects are removed for Native On.
+OptiX retains separate calls for five large shading stages to keep compilation
+manageable. Small math and sampling helpers can be inlined and optimized normally.
+No water effects are removed for Native On.
 
 ## Licensing
 
@@ -85,3 +86,33 @@ This is wall-clock frame work (including submission and GPU completion), not
 isolated GPU timestamps, and one before/after run does not establish a general
 hardware speedup. `node scripts/bench-sync.mjs <label>` reproduces the fixed-camera
 measurement with the locally built ChromiumRTXCuda browser.
+
+
+## Native rendering follow-up
+
+Normal frames wait for the final WebGPU canvas copy. That copy depends on the
+shared image's CUDA completion fence, which is signaled after the entire native
+batch. This avoids an additional native `idle()` IPC request and context-wide
+synchronization on every frame. Resize/disposal retain their lifecycle waits;
+water-only profiling explicitly waits on CUDA because it does not produce image.
+
+On a local RTX 5080, an alternating reference/optimized comparison at 960 x 600,
+four samples per pixel and six bounces measured 15.8 -> 10.7 ms median and
+32.0 -> 15.7 ms p95. Each variant had 75 measured frames across three camera
+positions, with five warm-up frames per position. The reference uses the
+`6e3efb8` frame loop and blanket no-inlining policy. These are wall-clock timings
+including submission, presentation copy and GPU completion, not isolated GPU
+timestamps. Background load affects results; this does not establish native
+being faster than WebGPU.
+
+The pixel comparison uses identical frozen simulation initialization. Compiler
+inlining changes floating-point evaluation: mean absolute RGB differences were
+0.025-0.036 on the 0-255 scale, with occasional larger individual differences.
+This is not a bit-identical rendering claim. Resolution, samples, bounces,
+geometry and water effects are unchanged.
+
+Run `node scripts/compare-native.mjs` for the alternating comparison and pixel
+checks. `node scripts/bench-sync.mjs <label> --webgpu` measures the fallback.
+Add `--phase=water` or `--phase=render` to isolate a phase (still including host
+and presentation overhead), or `--pixels` to save the final packed image.
+Profiling hooks are diagnostic only; normal frames always run both phases.

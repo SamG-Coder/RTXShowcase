@@ -33,11 +33,17 @@ async function resize(){
 }
 async function draw(){
  await resize();const scalars={yaw,pitch,distance,time,strength:+$('waves').value,sunAngle:+$('sun').value,bounces:+$('bounces').value,samples:+$('samples').value,depth:+$('depth').value,wind:+$('wind').value};
- const start=performance.now();diagnostics.stage="water simulation";const batch=native?runtime.native.batch():runtime.batch();water.record(batch,scalars);diagnostics.stage="render";const resources={image,...water.resources()},renderScalars={depth:scalars.depth,bounces:scalars.bounces,samples:scalars.samples};
- if(native)batch.trace(pipeline.bind(scene,resources,renderScalars),[width,height]);
- else batch.dispatch(kernel.bind(resources,{width,height,...renderScalars}),[width/8,height/8,1]);
+ const start=performance.now();diagnostics.stage="water simulation";const batch=native?runtime.native.batch():runtime.batch();if(diagnostics.profilePhase!=='render')water.record(batch,scalars);diagnostics.stage="render";const resources={image,...water.resources()},renderScalars={depth:scalars.depth,bounces:scalars.bounces,samples:scalars.samples};
+ if(diagnostics.profilePhase!=='water'){if(native)batch.trace(pipeline.bind(scene,resources,renderScalars),[width,height]);
+ else batch.dispatch(kernel.bind(resources,{width,height,...renderScalars}),[width/8,height/8,1]);}
  const submission=await batch.submit();diagnostics.nativeSubmissionsPerFrame=native?1:0;if(native)diagnostics.nativeHandoff=submission;
- const e=runtime.device.createCommandEncoder();e.copyBufferToTexture({buffer:image.gpuBuffer,bytesPerRow:width*4},{texture:context.getCurrentTexture()},[width,height]);runtime.device.queue.submit([e.finish()]);await runtime.idle();
+ const e=runtime.device.createCommandEncoder();e.copyBufferToTexture({buffer:image.gpuBuffer,bytesPerRow:width*4},{texture:context.getCurrentTexture()},[width,height]);runtime.device.queue.submit([e.finish()]);
+ // The canvas copy waits on the CUDA completion fence for image. Waiting for
+ // this queue therefore covers the whole native batch without a second IPC
+ // request and a context-wide CUDA synchronization. Water-only profiling has
+ // no dependency through image, so it must explicitly wait on native work.
+ if(diagnostics.profilePhase==='water')await runtime.idle();
+ else await runtime.device.queue.onSubmittedWorkDone();
  diagnostics.frameMs=performance.now()-start;diagnostics.frames++;diagnostics.ready=true;diagnostics.bounces=scalars.bounces;diagnostics.water="ClearWater6.1 FFT / PC optics";diagnostics.depth=scalars.depth;
  if(diagnostics.frames%10===0)$('stats').textContent=`${diagnostics.backend} · ${width} × ${height} · ${diagnostics.frameMs.toFixed(1)} ms · ${scalars.bounces} bounces`;
 }
@@ -52,6 +58,6 @@ $('fullscreen').onclick=()=>document.fullscreenElement?document.exitFullscreen()
 for(const id of ['quality','bounces','waves','sun','samples','depth','wind'])$(id).oninput=()=>{dirty=true;$('bounceValue').textContent=$('bounces').value;};
 let pointer=null,x=0,y=0;canvas.onpointerdown=e=>{pointer=e.pointerId;x=e.clientX;y=e.clientY;canvas.setPointerCapture(pointer);};canvas.onpointermove=e=>{if(e.pointerId!==pointer)return;yaw-=(e.clientX-x)*.006;pitch=Math.max(.06,Math.min(1.35,pitch+(e.clientY-y)*.006));x=e.clientX;y=e.clientY;dirty=true;};canvas.onpointerup=canvas.onpointercancel=()=>pointer=null;
 canvas.onwheel=e=>{e.preventDefault();distance=Math.max(4.5,Math.min(35,distance*Math.exp(e.deltaY*.001)));dirty=true;};addEventListener('resize',()=>dirty=true);
-window.showcase={tour(value){tour=value;tourStart=performance.now();paused=false;},async native(value){if(value&&await navigator.cuda.queryPermission()!=='granted')throw Error('Grant native GPU permission first');await setup(value);},async pose(value){while(inFrame)await new Promise(r=>setTimeout(r,5));Object.assign(diagnostics,{capturePose:value});yaw=value.yaw??yaw;pitch=value.pitch??pitch;distance=value.distance??distance;time=value.time??time;paused=true;dirty=true;},pause(){paused=true;},cinematic(value){document.body.classList.toggle('cinematic',value);},async pixels(){while(inFrame)await new Promise(r=>setTimeout(r,5));return Array.from(await runtime.read(image,Uint32Array));}};
+window.showcase={profile(phase){if(![null,"water","render"].includes(phase))throw Error("Unknown profiling phase");diagnostics.profilePhase=phase;},tour(value){tour=value;tourStart=performance.now();paused=false;},async native(value){if(value&&await navigator.cuda.queryPermission()!=='granted')throw Error('Grant native GPU permission first');await setup(value);},async pose(value){while(inFrame)await new Promise(r=>setTimeout(r,5));Object.assign(diagnostics,{capturePose:value});yaw=value.yaw??yaw;pitch=value.pitch??pitch;distance=value.distance??distance;time=value.time??time;paused=true;dirty=true;},pause(){paused=true;},cinematic(value){document.body.classList.toggle('cinematic',value);},async pixels(){while(inFrame)await new Promise(r=>setTimeout(r,5));return Array.from(await runtime.read(image,Uint32Array));}};
 if(!navigator.cuda?.getInteropCapabilities){$('native').disabled=true;$('capability').textContent='Open in ChromiumRTXCuda to enable native RTX.';}
 await setup(false);requestAnimationFrame(frame);
